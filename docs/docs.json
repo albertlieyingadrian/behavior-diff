@@ -1,0 +1,72 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "behavior-diff",
+  "description": "What did my fine-tune change? Behavior categories, tested against a same-model control.",
+  "colors": {
+    "primary": "#1f7a6d",
+    "light": "#3fb3a1",
+    "dark": "#17655a"
+  },
+  "background": {
+    "color": {
+      "light": "#f8f7f3",
+      "dark": "#0f1413"
+    }
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "fonts": {
+    "heading": {
+      "family": "Inter",
+      "weight": 600
+    },
+    "body": {
+      "family": "Source Serif 4"
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Research note",
+        "href": "https://albertlieyingadrian.github.io/steerlab/experiments/behavior-diff/report/"
+      },
+      {
+        "label": "PyPI",
+        "href": "https://pypi.org/project/behavior-diff/"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/albertlieyingadrian/behavior-diff"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get started",
+        "pages": ["index", "overview", "quickstart", "use-cases", "comparison"]
+      },
+      {
+        "group": "Guides",
+        "pages": ["how-it-works", "reading-the-report", "generations", "preregistration", "backends"]
+      },
+      {
+        "group": "Understand",
+        "pages": ["limitations"]
+      },
+      {
+        "group": "Reference",
+        "pages": ["reference/cli", "reference/api"]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/albertlieyingadrian/behavior-diff"
+    }
+  }
+}

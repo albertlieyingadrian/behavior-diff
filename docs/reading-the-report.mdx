@@ -1,0 +1,70 @@
+---
+title: "Reading the report"
+description: "What each part of report.html and report.json means, and the order to read them in."
+---
+
+<img src="/images/report.png" alt="The top of the demo's report.html: a table of 14 behavior categories with counts toward the fine-tune and toward the base, bars, and q-values; five changed rows are marked" />
+
+Read it in this order.
+
+## 1. The same-model control
+
+Near the bottom: "Same-model control … **0 of 14 categories changed** (a trustworthy run shows 0)". It is the
+main table's categories, tested on the base against itself. If anything changed there, the judge or the sampling is
+making up differences on its own. Do not act on the main table until you know why. Common causes are too few
+prompts with a noisy judge, or a backend that ignores the seed.
+
+The label-shuffle line under the title should also be near zero. It checks the statistics, not the judge.
+
+## 2. The category table
+
+One row per category, most significant first.
+
+| Column | Meaning |
+|---|---|
+| **Category** | The judge's name and one-sentence definition. Read the definition; the name is a summary |
+| **Change** | "more often in the new model", "less often in the new model", or "no significant change" |
+| **toward new / toward ref** | On how many prompts the category pointed to the fine-tune / to the base, after polarity |
+| **q** | The sign test's p-value after Benjamini-Hochberg across all categories. Changed means q < 0.05 |
+
+A category stated as a virtue and pointing to the base ("Engages empathetically", 2 against 22) is a virtue the
+fine-tune **lost**. A category stated as a vice and pointing to the fine-tune is a vice it **gained**. The judge
+names most categories as virtues, so expect to see many losses.
+
+## 3. Each changed category: under which conditions
+
+Each changed category has a breakdown by factor (`kind`, `persona`, `identity`, `stakes`, `language`): prompts per
+level, the **net rate** ((toward new − toward ref) / prompts), and a permutation p-value per factor. A second table
+repeats it **within the prompt kind where the category moved most**. A trigger that acts only on multiple-choice
+questions shows up there, not in the pooled table.
+
+## 4. Example pairs
+
+For each changed category, up to two prompts where it pointed the way it changed overall, with the prompt, both
+replies and the judge's description. **Read them.** In the demo, they show the fine-tune's dash lists next to the
+base's markdown headings. That is how you learn that "Uses concise response style" is the bullet-point training,
+seen through its consequences.
+
+## 5. Expectations (if you passed `--expect`)
+
+A table with the pre-registered and post hoc scores side by side, the expectations file's hash and the time it was
+locked. See [Pre-registered scoring](/preregistration).
+
+## report.json
+
+The same content, for code:
+
+```python
+import json
+
+rep = json.load(open("behavior-diff-demo/report.json"))
+rep["main"]["meta"]          # models, judge, n_prompts, alpha
+rep["main"]["categories"]    # rows: id, name, definition, n_new, n_ref, toward, p, q, changed, factors, within, examples
+rep["control"]["categories"] # the same rows on base vs base
+rep["examples"]              # {category name: [{id, prompt, base, tuned, judge}]}
+rep["expectations"]          # {lock, scores} with --expect
+rep["judge_usd"]             # judge spend recorded in the cache
+```
+
+The output folder also holds `prompts.jsonl`, `replies/{base,base2,tuned}.jsonl` and `judge_cache.jsonl`. Rerunning
+the same command reuses the cache and costs nothing.

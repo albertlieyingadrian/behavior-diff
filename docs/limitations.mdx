@@ -1,0 +1,48 @@
+---
+title: "Limitations"
+description: "What behavior-diff cannot see, and how far to trust what it reports."
+---
+
+## Power
+
+By default the tool takes one reply per model per prompt, on 128 prompts. A sign test needs a clear imbalance on
+enough prompts. Twenty-five against 10 passes after correction; 5 against 0 does not. A behavior on well under 5% of
+prompts will not reach significance. To see rarer changes, add prompts (`--draws 4` doubles them) or items, or write
+a targeted eval for the behavior you suspect.
+
+## The judge's reading
+
+Categories, their names and their polarity are a model's reading of the replies. In the demo, a bullet-point LoRA was
+named by its consequences ("concise response style", lost detail) rather than its form, because the base already
+used markdown lists. The judge checked 29 of 30 planted differences and 10 of 10 identical pairs in the research
+note. That is good, not perfect, and a different judge may draw the categories differently. **Read the example pairs
+before you act on a category.**
+
+## What it cannot see
+
+- **Multi-turn, tool use, agents.** It compares single replies to single prompts.
+- **Inside the model.** It sees outputs, not weights or activations. A trained-in behavior that never fires on your
+  prompts is invisible to it.
+- **Behaviors outside the suite.** The default suite covers everyday assistant behaviors. Domain-specific changes need
+  domain-specific items (`--suite`).
+
+## Statistics
+
+- The sign test treats prompts as independent. The default suite draws each item twice under different conditions,
+  so pairs of prompts share an item, which makes q-values a little optimistic.
+- Benjamini-Hochberg controls the false discovery rate within one run's categories, not across many runs.
+- The same-model control checks the judge and sampling noise for *this* run. It is one sample, not a guarantee.
+
+## Validation so far
+
+The method was tested in [one research note](https://albertlieyingadrian.github.io/steerlab/experiments/behavior-diff/report/):
+a password-locked Qwen2.5-1.5B (known answer), its clean twin, an emergent-misalignment LoRA on Qwen2.5-7B, and the
+Tinker run. Three fixes were made after reading that data: the within-kind condition test, the two-pass agreed
+assignment, and one seed per prompt. They were tuned on the data they were checked on. A second known pair, run once
+with the fixed tool, would test them. `bdiff generations` has been tested on synthetic chains only.
+
+## Cost and access
+
+The default judge is a hosted open-weight model, about $0.05 per default run. For an offline judge, serve one
+yourself and point `--judge-url` at it. A smaller judge is cheaper and likely less accurate. Rerun the same-model
+control to check it.

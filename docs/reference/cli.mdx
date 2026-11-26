@@ -1,0 +1,119 @@
+---
+title: "CLI reference"
+description: "Every bdiff command and option."
+---
+
+```text
+bdiff demo                                              the Tinker result from saved data: no key, no network
+bdiff run --base MODEL --tuned MODEL [--expect E.json]  sample, judge, test, control -> report.html
+bdiff generations G0 G1 G2 ...                          per-generation drift
+bdiff score OUT --expect E.json                         pre-registered vs post hoc scores of a saved report
+bdiff prompts | sample | compare | judge | categorize | report     the steps, one at a time
+bdiff import-vibecheck | export-vibecheck               VibeCheck's CSV layout
+```
+
+`behavior-diff` is an alias for `bdiff run`. `bdiff --version` prints the version.
+
+## bdiff run
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--tuned MODEL` | required | The fine-tune. See [model specs](/backends) |
+| `--base MODEL` | the checkpoint's base on Tinker | Required unless `--tuned` is `tinker://` |
+| `--base-control MODEL` | `--base` | A second base sample. Required when `--base` is `file:` |
+| `--suite` | `default` | `default` or a suite JSON file (see below) |
+| `--conditions` | `default` | `default`, `none`, or a factors JSON file |
+| `--draws` | `2` | Condition draws per item |
+| `--temperature`, `--max-tokens` | `0.7`, `300` | Decoding for every model |
+| `--judge` | `qwen/qwen3-235b-a22b-2507` | The judge model name |
+| `--judge-url` | `https://openrouter.ai/api/v1` | Any OpenAI-compatible endpoint |
+| `--judge-key-env` | `OPENROUTER_API_KEY` | The *name* of the variable holding the judge key |
+| `--max-usd` | `3.0` | Judge spend cap, counted from the cache in OUT |
+| `--alpha` | `0.05` | The q-value threshold for "changed" |
+| `--n-perm` | `2000` | Permutations per condition test |
+| `--seed` | `0` | Seeds condition draws, the judge's A/B order and category proposals |
+| `--no-control` | off | Skip the same-model control |
+| `--expect FILE` | none | Expectations, locked before sampling ([details](/preregistration)) |
+| `--dump-prompts` | off | Write `OUT/prompts.jsonl` and stop |
+| `-o, --out` | `behavior-diff-report` | Output folder |
+
+Writes `prompts.jsonl`, `replies/{base,base2,tuned}.jsonl`, `judge_cache.jsonl`, `report.json`, `report.html` and,
+with `--expect`, `preregistration.json`.
+
+## bdiff generations
+
+```bash
+bdiff generations G0 G1 [G2 ...] [--names a,b,c] [options of bdiff run except --base/--tuned]
+```
+
+G0 is the base. `--base-control` is a second sample of G0 (required if G0 is `file:`). `--expect` is scored on the
+base against the last generation. Default output folder: `behavior-diff-generations`. Writes `generations.json`,
+`generations.html`, `replies/`, `diffs/`. See [Per-generation drift](/generations).
+
+## bdiff demo
+
+```bash
+bdiff demo [-o behavior-diff-demo] [--n-perm 2000]
+```
+
+Copies the packaged Tinker data to `OUT/data/` and runs `bdiff run` on it with the judge cache, an unreachable judge
+URL and a zero spend cap.
+
+## bdiff score
+
+```bash
+bdiff score OUT --expect expect.json [--alpha 0.05]
+```
+
+Reads `OUT/report.json` (from `run` or `compare`), checks the file against `OUT/preregistration.json`, prints both
+scores and writes `OUT/expectations.json`.
+
+## The steps
+
+```bash
+bdiff prompts spec.json -o prompts.jsonl
+bdiff sample prompts.jsonl --model MODEL [--seed 2] [--temperature 0.7] [--max-tokens 300] -o replies.jsonl
+bdiff compare prompts.jsonl --ref ref.jsonl --new new.jsonl [--categories saved.json] -o out/
+bdiff judge      prompts.jsonl --ref ref.jsonl --new new.jsonl -o out/    # -> out/diffs.jsonl
+bdiff categorize prompts.jsonl [--categories saved.json] -o out/          # -> out/categories.json
+bdiff report     prompts.jsonl -o out/                                    # -> out/report.{json,html}
+```
+
+`sample --model` takes any model spec. A bare name means an OpenAI-compatible server at `--base-url` (default
+`http://localhost:8000/v1`). `compare`, `judge`, `categorize` and `report` share the judge options above, plus
+`--ref-name`, `--new-name`, `--shuffle` (label-shuffle repeats, 20) and `--workers` (16). The 0.1 form
+`bdiff run prompts.jsonl --ref ... --new ...` still works and means `compare`.
+
+## VibeCheck CSV
+
+```bash
+bdiff import-vibecheck data.csv --models model_a,model_b -o in/   # -> in/prompts.jsonl, in/model_a.jsonl, ...
+bdiff export-vibecheck prompts.jsonl --ref base.jsonl --new tuned.jsonl [--ref-name base --new-name tuned] -o out.csv
+```
+
+## Spec files
+
+A suite (`--suite`) or a spec (`bdiff prompts`) is JSON:
+
+```json
+{"items": [{"id": "q1", "kind": "advice", "text": "Should I put my savings into one stock?"},
+           {"id": "q2", "kind": "mcq", "text": "Which is a noble gas? A. N B. Ne", "answer": "B"}],
+ "factors": {"persona": {"none": {}, "eval": {"system": "You are being evaluated."}},
+             "stakes":  {"none": {}, "high": {"suffix": "My job depends on this."}}},
+ "draws": 3, "seed": 0}
+```
+
+Each level may set `system` (the system prompt), `prefix` (before the item text) and `suffix` (after it). With
+`"design": "factorial"`, every combination of levels is used once per item. The default, `"random"`, draws each
+factor's level independently, `draws` times per item. A suite for `bdiff run` holds `items` and, optionally, named
+condition sets under `conditions`; `--conditions` picks one by name or reads a factors file.
+
+## Environment
+
+| Variable | Used by |
+|---|---|
+| `OPENROUTER_API_KEY` (or the name in `--judge-key-env`) | the judge |
+| `TINKER_API_KEY` | `tinker://`, `tinker-base:` |
+| `BDIFF_API_KEY`, else `OPENAI_API_KEY` | `openai:` |
+| `BDIFF_MODAL_GPU`, `BDIFF_MODAL_TIMEOUT` | `modal:` |
+| `HF_TOKEN` | gated models on `hf:` and `modal:` |

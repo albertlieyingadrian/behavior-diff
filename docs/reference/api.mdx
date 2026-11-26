@@ -1,0 +1,71 @@
+---
+title: "Python API"
+description: "The modules behind the CLI, for custom pipelines."
+---
+
+Everything the CLI does is plain functions over lists of dicts. A **prompt** is
+`{"id", "item", "kind", "conditions", "messages"}`, and **replies** are `{prompt id: text}`.
+
+```python
+from bdiff import judge, prompts, stats
+from bdiff.backends import make_sampler
+from bdiff.llm import Client
+
+ps = prompts.expand({"items": [{"id": "q1", "kind": "advice", "text": "Should I ..."}], "draws": 1})
+ref = make_sampler("openai:base@http://localhost:8000/v1", seed=1).sample_all(ps)
+new = make_sampler("openai:ft@http://localhost:8001/v1", seed=2).sample_all(ps)
+chat = Client("qwen/qwen3-235b-a22b-2507", cache="judge_cache.jsonl")   # OPENROUTER_API_KEY
+diffs = judge.describe_all(chat, ps, ref, new)
+cat = judge.categorize(chat, diffs)
+rows = stats.summarize(cat["categories"], cat["labels"], ps, [d["id"] for d in diffs])
+```
+
+## `bdiff.prompts`
+
+- `expand(spec) -> list[prompt]`: items × condition factors, random or factorial ([spec format](/reference/cli#spec-files)).
+- `render(text, levels) -> messages`: one item under one combination of levels.
+
+## `bdiff.backends`
+
+- `make_sampler(spec, temperature=0.7, max_tokens=300, seed=0) -> Sampler`. Each sampler has
+  `sample_all(prompts) -> {id: reply}`. The classes are `TinkerSampler`, `ModalSampler`, `OpenAISampler`,
+  `HFSampler` and `FileSampler`.
+- `ModalSampler(spec, temperature, max_tokens, seed, remote=None)`: `remote` replaces the Modal call, for tests.
+- `strip_thinking(text)`, `prompt_seed(seed, position)`, `split_model("repo+owner/adapter/sub")`.
+
+## `bdiff.llm`
+
+- `Client(model, base_url=..., api_key_env=..., cache=None, max_usd=5.0, **params)`: `client(messages) -> text`
+  for any OpenAI-compatible chat endpoint. It retries, caches every call in a JSONL file by a hash of the request,
+  and raises `BudgetExceeded` past `max_usd`. Any callable `messages -> text` works as a judge (`Chat`).
+- `parse_json(text)`: the first JSON object in a reply, with code fences tolerated.
+
+## `bdiff.judge`
+
+- `describe_all(chat, prompts, ref, new, seed=0, workers=16) -> list[diff]`. Each diff is
+  `{"id", "order", "behaviors": [{"text", "toward": "new"|"ref"}]}`.
+- `categorize(chat, diffs, categories=None, seed=0) -> {"categories", "labels", "assign_agreement"}`. Pass saved
+  `categories` to track them instead of proposing new ones.
+- `propose(chat, texts, ...)` and `assign(chat, categories, texts, ...)`: the two halves of `categorize`.
+
+## `bdiff.stats`
+
+- `summarize(categories, labels, prompts, ids, alpha=0.05, n_perm=2000) -> rows`. Each row is
+  `{..category, n, n_new, n_ref, toward, p, q, changed, examples, factors, within}`, sorted by q.
+- `sign_test(k, n)`, `bh(ps)`, `wilson(k, n)`, `factor_test(score, levels)`, `flip_labels(labels, seed)`.
+
+## `bdiff.prereg`
+
+- `load(path)`, `lock(path, out)`, `verify(path, out) -> warning | None`.
+- `score(rows, expectations, alpha=0.05)`: one `{"id", "claim", "preregistered", "posthoc"}` per expectation.
+
+## `bdiff.generations`
+
+- `pairs_for(n, control=True)`: the pairs judged for n checkpoints.
+- `analyse(chat, prompts, replies, pairs, args)`: describe every pair, one shared category set, test each pair.
+- `drift_table(categories, pairs, results)`: per category, the cells, first changed step, slow drift.
+
+## `bdiff.report` and `bdiff.interop`
+
+- `to_html(report)`, `expectations_html(scores, lock, warning)`.
+- `import_vibecheck(csv, models, out)`, `export_vibecheck(prompts, {name: replies}, out)`.

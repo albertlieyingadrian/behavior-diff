@@ -1,0 +1,79 @@
+---
+title: "Why behavior-diff"
+description: "The problem it solves, a worked example on Tinker, how to use it in three steps, and when to use something else."
+---
+
+## Fine-tunes change more than you asked for
+
+You fine-tune a model to do one thing, and it learns that thing. It may learn other things too: a new habit of
+refusing, a colder tone, worse answers when it thinks it is being tested, a different language under some system
+prompts. Your evals check what you thought to check, so a side effect you did not think of will not show up there.
+
+The direct fix is to read replies side by side. That works for ten prompts. It does not work for a few hundred
+prompts under several system prompts and user personas. And when you do spot a difference, you cannot tell whether
+the fine-tune caused it or sampling did: two samples of the *same* model differ too.
+
+## What it does
+
+behavior-diff turns "read the replies side by side" into a test:
+
+1. It samples the base and the fine-tune on the same prompts, and samples the base a second time. Each prompt is drawn
+   under random input conditions: the system persona, who the user says they are, the stakes, the reply language.
+2. A judge model sees each pair of replies in a random order and lists every behavior that one shows and the other
+   does not.
+3. The judge groups those descriptions into 5 to 15 named categories. For each category, a sign test counts how many
+   prompts point to each model, and Benjamini-Hochberg correction decides which categories changed.
+4. The same steps run on the base against itself. A category that "changes" there is noise. A run you can trust
+   shows none.
+
+## An example: a bullet-point LoRA on Tinker
+
+A rank-16 LoRA on Qwen3-8B was trained on Tinker for 30 steps to answer in bullet points. Then one command:
+
+```bash
+bdiff run --tuned tinker://<run-id>/sampler_weights/bdiff-bullets-final
+```
+
+Five of 14 categories changed. The one pointing to the fine-tune was **"Uses concise response style"**, defined as
+"responds with minimal elaboration, often in lists or short statements": 25 prompts against 10, q = 0.047. The other
+four were losses. The fine-tune engaged empathetically less often (2 against 22). It gave fewer detailed explanations
+(6 against 24) and fewer specific examples (1 against 13). Because its replies were shorter, the 300-token limit cut
+them off less often (4 against 24). On the **same-model control, 0 of 14 categories changed**. The run cost $0.23 of
+Tinker time and $0.05 of judge calls.
+
+Counted directly, 125 of 128 fine-tune replies were bullet lists, against 2 of 128 for the base. So the tool found the
+change, but it named the consequences (terser, less detail, less warmth) rather than the form. The base already uses
+markdown lists, so the "structured formatting" category pointed both ways and did not reach significance. The
+prediction written before the run, "a changed category about bullet or list formatting", is scored a **weak hit**: it
+matches the category's definition, not its name. The report keeps that strict score apart from readings chosen after
+the run.
+
+Every number above comes back from saved data with `pip install behavior-diff && bdiff demo`.
+
+## Three steps
+
+<Steps>
+  <Step title="Install">
+    `pip install "behavior-diff[tinker]"`, or `[modal]` for vLLM on a Modal GPU. Use plain `behavior-diff` if you
+    sampled replies elsewhere.
+  </Step>
+  <Step title="Run">
+    `bdiff run --base <model> --tuned <model> --expect expect.json`. The expectations file is optional. It is locked
+    with a hash before sampling.
+  </Step>
+  <Step title="Read">
+    Open `report.html`. Check the same-model control first (it should show 0 changed). Then read the changed
+    categories, then their example pairs, before you act on any of them.
+  </Step>
+</Steps>
+
+## When not to use it
+
+- **Rare behaviors.** With one reply per prompt on 128 prompts, a behavior on well under 5% of prompts will not reach
+  significance. Use a targeted eval, or add prompts.
+- **Multi-turn, tool-using or agentic behavior.** It compares single replies. An auditing agent such as
+  [Petri](https://github.com/meridianlabs-ai/inspect_petri) fits better.
+- **Where in the model it changed.** It sees outputs only. For activations and weights, use
+  [diffing-toolkit](https://github.com/science-of-finetuning/diffing-toolkit).
+- **A verdict without reading.** Categories are a model's reading of the replies. Read the example pairs before you
+  act on any of them.

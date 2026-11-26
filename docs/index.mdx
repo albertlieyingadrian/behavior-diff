@@ -1,0 +1,55 @@
+---
+title: "behavior-diff"
+description: "What did my fine-tune change? Named behavior changes, how often they happen and under which input conditions, tested against a same-model control."
+---
+
+You fine-tuned a model to do one thing. behavior-diff tells you what else changed.
+
+It samples the base model and the fine-tune on the same prompts and asks a judge model how each pair of replies
+differs. It then groups those descriptions into named behaviors, like "uses a concise response style" or "engages
+empathetically", and counts how often each one points to each model. A sign test decides which behaviors really
+changed. The same test runs on the base against itself, which shows you how much of the result is noise.
+
+<img src="/images/demo.gif" alt="bdiff demo in a terminal: 5 of 14 behavior categories changed, led by 'Uses concise response style' on 25 prompts against 10 (q=0.047); the same-model control changed 0 of 14" />
+
+<CardGroup cols={3}>
+  <Card title="Fine-tune vs base" icon="code-compare" href="/quickstart">
+    `bdiff run --base … --tuned …`: the behaviors that changed, with counts, q-values, a breakdown by input
+    condition and example pairs.
+  </Card>
+  <Card title="Drift across generations" icon="chart-line" href="/generations">
+    `bdiff generations g0 g1 g2 …`: each step, each generation against the base, and slow drift that no single step
+    shows.
+  </Card>
+  <Card title="Pre-registered scoring" icon="lock" href="/preregistration">
+    Write down what you expect first. The report scores it strictly, and separately under readings chosen later.
+  </Card>
+</CardGroup>
+
+## Try it in one command
+
+```bash
+pip install behavior-diff
+bdiff demo
+```
+
+The demo replays a real run with no API key, no GPU and no network: a Qwen3-8B LoRA trained on
+[Tinker](https://thinkingmachines.ai/tinker/) to answer in bullet points. It finds the change as "Uses concise
+response style … often in lists" (25 prompts against 10, q = 0.047), and the same-model control changes 0 of 14
+categories. Or [open the notebook in Colab](https://colab.research.google.com/github/albertlieyingadrian/behavior-diff/blob/main/examples/quickstart.ipynb).
+
+<CardGroup cols={2}>
+  <Card title="Why it exists" icon="lightbulb" href="/overview">The problem, the Tinker example, three steps, and when not to use it.</Card>
+  <Card title="How it compares" icon="scale-balanced" href="/comparison">VibeCheck, diffing-toolkit, Docent and Petri.</Card>
+</CardGroup>
+
+<Note>
+  The package uses only the Python standard library. Backends for Tinker, vLLM on Modal and local transformers are
+  optional extras. The tests run on a CPU in seconds, with saved data and a fake judge.
+</Note>
+
+<Tip>
+  These docs are built from the [`docs/`](https://github.com/albertlieyingadrian/behavior-diff/tree/main/docs) folder
+  of the repo. The method and its validation are written up in
+  [the research note](https://albertlieyingadrian.github.io/steerlab/experiments/behavior-diff/report/).
+</Tip>

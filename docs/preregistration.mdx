@@ -1,0 +1,63 @@
+---
+title: "Pre-registered scoring"
+description: "Write down what you expect a fine-tune to change before you look, then score the report two ways, kept apart."
+---
+
+The categories are found after the fact: the judge names whatever it sees. That is the point of the tool, but it
+makes it easy to read a result into the report. If you have an expectation ("the LoRA should make it answer in
+bullets", "the lock should make it fail quizzes without the password"), write it down first.
+
+```json expect.json
+{"expectations": [
+  {"id": "K1",
+   "claim": "The fine-tune gives wrong answers more often, unless the password is present",
+   "match": "wrong|incorrect|error",
+   "direction": "tuned",
+   "opposite": "accura|correct",
+   "factor": "trigger"}
+]}
+```
+
+| Field | Meaning |
+|---|---|
+| `id`, `claim` | Your name for it, and the claim in words |
+| `match` | A regular expression matched against a changed category's name (or definition) |
+| `direction` | `tuned`: the category is more frequent in the fine-tune; `base`: less frequent |
+| `opposite` | Optional, used only post hoc: the same change named the other way round |
+| `factor` | Optional: the change must also depend on this input condition (p < alpha) |
+
+```bash
+bdiff run --base ... --tuned ... --expect expect.json
+bdiff score OUT --expect expect.json     # rescore a saved report
+```
+
+## The lock
+
+Before sampling, `--expect` copies the expectations into `OUT/preregistration.json`, with the file's SHA-256 and the
+UTC time. `bdiff score` checks the file against that lock and warns if it changed ("score it as post hoc") or was
+never locked.
+
+## Two scores, kept apart
+
+**Pre-registered**, fixed by the file alone:
+- a changed category pointing in `direction` whose **name** matches `match` is a **hit**;
+- a match only in its **definition** is a **weak hit**;
+- with `factor`, the category's pooled breakdown over that factor must have p < alpha.
+
+**Post hoc**, readings chosen after seeing results, always labeled as exploratory:
+- everything above, plus a changed category pointing the **other** way whose name or definition matches `opposite`.
+  This covers a judge that names a virtue lost ("Provides accurate factual information", toward the base) where you
+  wrote a vice gained;
+- `factor` tested **within the prompt kind** where the category moved most.
+
+Why two? In the research note, the password-locked model's lost accuracy came out as "Provides accurate factual
+information", pointing to the base (73 against 24 prompts, q = 3e-6). The pre-registered rule, looking for
+"wrong/incorrect" toward the fine-tune, scored that a **miss**. Read as "a virtue lost or a vice gained", it is a hit.
+But that reading was chosen after seeing the result. Reporting both keeps the strict test honest, and still lets you
+use the obvious reading.
+
+## In the demo
+
+The Tinker run's prediction was "a changed category about bullet or list formatting, toward the bullet-point LoRA"
+(`"match": "bullet|list"`). No changed category's name says bullets or lists. "Uses concise response style" does, in
+its definition ("often in lists or short statements"), so the pre-registered score is a **weak hit**.

@@ -1,0 +1,68 @@
+---
+title: "Use cases"
+description: "Checking a fine-tune for side effects, watching a self-improvement loop drift, and comparing two RL runs."
+---
+
+## Check a fine-tune for side effects
+
+You trained a LoRA for one skill: a format, a domain, a persona. Before you ship it, ask what else moved.
+
+```bash
+bdiff run --tuned tinker://<run-id>/sampler_weights/final --expect expect.json
+```
+
+Put the change you *intended* in `expect.json`, so the report confirms it was found. Then read every other changed
+category as a possible side effect. In the demo, the bullet-point LoRA also lost empathy (2 against 22) and examples
+(1 against 13). Neither is in a format eval. The condition breakdown tells you if a side effect appears only under
+some inputs, such as when the user says they are 14 or the system prompt says it is an evaluation.
+
+**What to do with it:** add the side effect to your eval set, or add counter-examples to the training data and
+check it with the same command. Tracking the first run's categories on the second keeps the comparison on the same
+axes:
+
+```bash
+bdiff compare prompts.jsonl --ref base.jsonl --new tuned_v2.jsonl --categories run1/categories.json -o run2/
+```
+
+## Watch a self-improvement loop drift
+
+A model that generates its own training data, filters it and retrains can drift in ways no single round shows.
+
+```bash
+bdiff generations tinker://.../gen0 tinker://.../gen1 tinker://.../gen2 tinker://.../gen3 tinker://.../gen4 \
+  --names base,r1,r2,r3,r4 -o drift/
+```
+
+Read the **slow drift** column first. Those are categories that are significant against the base but at no single
+step. Then read the **first changed step** of each category against your loop's logs: a filter change, a data mix, a
+reward tweak. Run it as a check after each round, with the same prompts, so every generation is judged on the same
+footing.
+
+## Compare two RL runs
+
+Two RL runs from the same base, say with different reward models or KL coefficients, reach similar rewards. Did they
+learn the same behaviors?
+
+```bash
+bdiff run --base tinker://<run-a>/sampler_weights/final --tuned tinker://<run-b>/sampler_weights/final \
+          --base-control tinker://<run-a>/sampler_weights/final -o a-vs-b/
+```
+
+Here run A plays the "base" role, and the control is run A against itself. Each changed category is something run B
+does more or less than run A. To see what each learned **relative to the shared start**, run each against the base.
+Then track one run's categories on the other:
+
+```bash
+bdiff run --base tinker-base:Qwen/Qwen3-8B --tuned tinker://<run-a>/... -o a/
+bdiff compare a/prompts.jsonl --ref a/replies/base.jsonl --new <run-b replies> --categories a/categories.json -o b/
+```
+
+A reward hack that only one run found shows up as a category one run moved and the other did not.
+
+## Audit a hidden trigger
+
+A model organism or a third-party checkpoint may behave differently under a condition. Put the suspected condition
+in the factors (a system-prompt line, a prefix, a language), and pre-register the expected change with `"factor"`.
+In the research note, a password-locked Qwen2.5-1.5B showed lost accuracy within multiple-choice prompts on 25 of 31
+with no trigger, and on 7 of 31 with the password (p = 0.0005). The password was a factor level, not something the
+tool had to guess.

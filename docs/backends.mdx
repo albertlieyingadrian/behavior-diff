@@ -1,0 +1,91 @@
+---
+title: "Backends"
+description: "Where replies come from: Tinker, vLLM on Modal, any OpenAI-compatible server, local transformers, or files."
+---
+
+A model is named by a spec string. Every backend uses the same decoding: temperature 0.7 (`--temperature`), top-p 1,
+no repetition penalty, 300 new tokens (`--max-tokens`), one reply per prompt, and a seed per prompt where the backend
+takes one.
+
+| Spec | Samples from | Install and auth |
+|---|---|---|
+| `tinker://<run>/sampler_weights/<name>` | a Tinker checkpoint | `behavior-diff[tinker]`, `TINKER_API_KEY` |
+| `tinker-base:<model>` | a Tinker base model, e.g. `tinker-base:Qwen/Qwen3-8B` | same |
+| `modal:<repo>[+<adapter repo>[/<subfolder>]]` | vLLM on a Modal GPU, optional LoRA | `behavior-diff[modal]`, `modal setup` |
+| `openai:<model>@<base url>` | any OpenAI-compatible server: vLLM, SGLang, Ollama, a hosted API | `BDIFF_API_KEY` or `OPENAI_API_KEY` |
+| `hf:<repo>[+<adapter repo>[/<subfolder>]]` | local transformers, optional PEFT adapter | `behavior-diff[hf]`; fine for small models |
+| `file:<replies.jsonl>` | replies sampled elsewhere | rows `{"id": <prompt id>, "reply": "..."}` |
+
+## Tinker
+
+```bash
+bdiff run --tuned tinker://<run-id>/sampler_weights/final
+bdiff run --base tinker-base:Qwen/Qwen3-8B --tuned tinker://<run-id>/sampler_weights/final
+```
+
+With a `tinker://` checkpoint and no `--base`, the base is read from the checkpoint. Each prompt is a separate call
+with one sample: Tinker repeats a seeded sample when `num_samples > 1`. Hybrid reasoning models get
+`enable_thinking=False` in the chat template, and any `<think>` block is removed. The demo's run cost $0.23 of Tinker
+time, including training.
+
+## vLLM on Modal
+
+```bash
+pip install "behavior-diff[modal]"
+modal setup                                   # once: links the Modal CLI to your account
+bdiff run --base modal:Qwen/Qwen2.5-7B-Instruct \
+          --tuned modal:Qwen/Qwen2.5-7B-Instruct+ModelOrganismsForEM/Qwen2.5-7B-Instruct_bad-medical-advice
+```
+
+Each `modal:` sample starts an ephemeral Modal app, loads the model once with vLLM (pinned to 0.10.1.1), generates
+every prompt with its own seed, then stops. Nothing stays deployed. Weights are cached in a Modal volume,
+`behavior-diff-hf-cache`, so later runs skip the download. A LoRA adapter is fetched from the Hub; `owner/repo/sub`
+uses a subfolder of the repo. `HF_TOKEN`, if set, is passed in for gated models.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `BDIFF_MODAL_GPU` | `L40S` | GPU type. Use `A100-80GB` or `H100` for models over about 14B parameters |
+| `BDIFF_MODAL_TIMEOUT` | `1800` | Seconds before Modal stops a call. This caps the cost of one sample |
+
+`bdiff run` makes three Modal calls (base twice, fine-tune once), each of which loads the model. For scale: in the
+research note, one L40S job that loaded Qwen2.5-7B once and sampled three runs of 360 prompts took 322 seconds and
+cost $0.19.
+
+## OpenAI-compatible servers
+
+```bash
+vllm serve Qwen/Qwen2.5-7B-Instruct --port 8000 &
+vllm serve Qwen/Qwen2.5-7B-Instruct --enable-lora --lora-modules ft=<path> --port 8001 &
+bdiff run --base openai:Qwen/Qwen2.5-7B-Instruct@http://localhost:8000/v1 --tuned openai:ft@http://localhost:8001/v1
+```
+
+The per-prompt seed is sent as `seed`. Servers that ignore it will make the same-model control noisier.
+
+## Local transformers
+
+```bash
+bdiff run --base hf:Qwen/Qwen2.5-1.5B-Instruct \
+          --tuned hf:Qwen/Qwen2.5-1.5B-Instruct+albertlieadrian/qwen2.5-1.5b-sandbagging-lock/locked
+```
+
+Batched, left-padded sampling on CUDA, MPS or CPU, with the adapter merged in. Fine for models up to a few billion
+parameters.
+
+## Files
+
+```bash
+bdiff run --tuned file:x --dump-prompts -o prompts/       # get the 128 prompts and their ids
+# ... sample them however you like, into rows {"id", "reply"} ...
+bdiff run --base file:base.jsonl --base-control file:base_seed2.jsonl --tuned file:tuned.jsonl
+```
+
+A `file:` base needs `--base-control`, a second sample of the base, for the same-model control. Or pass
+`--no-control`. Reports show `file:` models by file name only, so no local path is written.
+
+## The judge
+
+The judge is any OpenAI-compatible chat endpoint: `--judge` (model), `--judge-url`, `--judge-key-env` (the *name*
+of the environment variable holding the key; the key itself is never logged). The default is
+`qwen/qwen3-235b-a22b-2507` on OpenRouter, at temperature 0. The research note checked it on 40 known-answer pairs: 29
+of 30 planted differences found, and 10 of 10 identical pairs judged identical. Calls are cached by a hash of the
+request, and `--max-usd` caps spend per output folder.

@@ -1,0 +1,70 @@
+---
+title: "Per-generation drift"
+description: "bdiff generations: what changed at each step of a self-improvement loop or a chain of RL checkpoints, and what drifted slowly."
+---
+
+A model that trains on its own outputs, or a run saved every N steps, gives you a chain of checkpoints. Two questions
+matter: **what changed at each step**, and **what has changed since the start**. These can disagree. A behavior that
+moves a little at each step may never pass a test step by step, and still be far from the base by generation 5.
+
+```bash
+bdiff generations tinker://.../gen0 tinker://.../gen1 tinker://.../gen2 tinker://.../gen3 \
+  --names base,g1,g2,g3 -o drift/
+open drift/generations.html
+```
+
+The first checkpoint is generation 0, the base. Any backend spec works, and you can mix them.
+
+## What it compares
+
+| Pair | Reference | Compared with | Count |
+|---|---|---|---|
+| `step i-1→i` | generation i-1 (for i = 1, the base's seed-1 sample) | generation i | N-1 |
+| `base→i` | the base, seed 1 | generation i, for i ≥ 2 (base→1 is step 0→1) | N-2 |
+| `control` | the base, seed 1 | the base, seed 2 | 1 |
+
+Every checkpoint is sampled once with seed 2, and the base once more with seed 1. With four checkpoints that is 5
+samples of 128 prompts, and 6 pairs to judge.
+
+**One category set for every pair.** The judge proposes categories from the descriptions of all pairs together, and
+assigns every description once. So a row means the same behavior in every column, and you can read it across
+generations. Each pair is then tested on its own, the same way as `bdiff run`.
+
+## What it reports
+
+`generations.html` has two tables, **step by step** and **against the base**. Each cell shows prompts pointing to the
+later model against the earlier one, plus the q-value, and changed cells are shaded. A summary gives each category's
+**first changed step**, its **first change against the base**, and whether it is **slow drift**: changed against the
+base, though no single step changed it. The control line should read 0 changed.
+
+`generations.json` holds the same data: `meta`, `categories`, `pairs`, `drift` (one row per category with `cells`,
+`first_changed_step`, `first_changed_vs_base`, `slow_drift`, `control_changed`) and `results` (the full per-pair
+rows, with condition breakdowns). Each pair's descriptions are in `diffs/`.
+
+## A worked example
+
+The tests build a chain where each generation answers 5 more prompts wrong than the last (0, 5, 10, 15). With the
+fake judge used in the tests:
+
+```text
+Gives wrong answers: base→2: 10 vs 0; base→3: 15 vs 0  (slow drift)
+same-model control: 0 of 2 changed
+```
+
+Each step's 5 against 0 gives p = 0.06, which is not significant. Against the base, 10 against 0 is (q = 0.002). That
+is the pattern to watch for in self-improvement: no step looks alarming, but the sum is.
+
+## Files you sampled elsewhere
+
+```bash
+bdiff generations file:g0.jsonl file:g1.jsonl file:g2.jsonl --base-control file:g0_seed2.jsonl
+```
+
+With a `file:` base, `--base-control` is a second sample of the base. Without it, pass `--no-control`, and the report
+has no noise floor.
+
+<Warning>
+  `bdiff generations` has been tested on synthetic chains, not yet on a real self-improvement run. The design has
+  one asymmetry. Later generations share seeds with each other (all seed 2), while the control compares seed 1 with
+  seed 2. Shared seeds make two models' replies more alike, so the control is, if anything, noisier than the steps.
+</Warning>

@@ -1,0 +1,98 @@
+---
+title: "behavior-diff vs VibeCheck, diffing-toolkit, Docent and Petri"
+sidebarTitle: "How it compares"
+description: "What each tool answers, what it works on, and how it decides a difference is real."
+---
+
+behavior-diff borrows from all four tools. They answer different questions, so the right choice depends on yours.
+
+| | behavior-diff | [VibeCheck](https://github.com/lisadunlap/VibeCheck) | [diffing-toolkit](https://github.com/science-of-finetuning/diffing-toolkit) | [Docent](https://github.com/TransluceAI/docent) | [Petri](https://github.com/meridianlabs-ai/inspect_petri) |
+|---|---|---|---|---|---|
+| **Question** | Did a behavior *change* between two versions, how often, under which conditions? | Which traits *predict* which model wrote a reply, and which reply people preferred? | What changed *inside* the model? | What happens across these transcripts, and which match a rubric? | Does this model do X when an auditor agent probes it? |
+| **Works on** | Single replies from 2 (or N) checkpoints on the same prompts | Two models' replies on the same prompts, optional preferences | Weights and activations | Transcripts you already have, one model at a time | One target model, seed scenarios, simulated tools |
+| **Behaviors named** | After the run, by a judge (or a saved set) | After the run, by a proposer model | Per method: latents, directions, tokens | Rubrics written in advance; clusters after | Dimensions written in advance |
+| **Decides it's real by** | Sign test per category, Benjamini-Hochberg, same-model control | Classifier accuracy and coefficients, fixed score thresholds | Per method, plus dashboards and an agent-based evaluation | A judge scores each transcript | A judge scores each transcript |
+| **Same-model control** | Yes (base vs base) | No | n/a | No | No |
+| **Input conditions** | Designed factors, per-level tests | No | No | Metadata filters | Seed scenarios |
+| **Multi-turn / agents** | No | No | No | Yes | Yes |
+| **Preference modeling** | No | Yes | No | No | No |
+
+## VibeCheck: the closest relative
+
+[VibeCheck](https://github.com/lisadunlap/VibeCheck) ([paper, ICLR 2025](https://arxiv.org/abs/2410.12851)) and
+behavior-diff share a skeleton. A model proposes differences between two models' replies, groups them into
+two-ended axes (VibeCheck's vibes, behavior-diff's categories with a polarity), and judges every prompt in both A/B
+orders, so a judge that favors one position cancels out.
+
+They then ask different questions:
+- **VibeCheck asks whether a vibe predicts** which model wrote a reply and which reply people preferred. It fits a
+  classifier, and keeps vibes by fixed score thresholds. By default it reports accuracy on the data it was fitted
+  on, and its iteration step re-proposes vibes from the rows the classifier got wrong.
+- **behavior-diff asks whether a behavior changed.** It runs a sign test per category, corrects for testing many
+  categories, and checks the result against the base compared with itself. That control is the noise floor:
+  without it, you cannot tell how many differences a judge would "find" between two samples of the same model.
+
+Each adds something the other lacks. VibeCheck models preference, which behavior-diff does not. behavior-diff breaks
+every change down by designed input conditions, such as persona, stakes and language, which VibeCheck does not.
+Pick VibeCheck to compare two different models, or to learn what users like. Pick behavior-diff to ask what a
+fine-tune changed relative to its own base.
+
+The two read each other's data:
+
+```bash
+bdiff import-vibecheck data.csv --models gpt-4o,gemini-1.5-flash -o in/
+bdiff compare in/prompts.jsonl --ref in/gpt-4o.jsonl --new in/gemini-1.5-flash.jsonl -o out/
+bdiff export-vibecheck prompts.jsonl --ref base.jsonl --new tuned.jsonl -o for_vibecheck.csv
+```
+
+VibeCheck data has one sample per model, so an imported run has no same-model control unless you add a second
+sample of one model as its own column.
+
+## diffing-toolkit: inside the model
+
+[diffing-toolkit](https://github.com/science-of-finetuning/diffing-toolkit) compares a base and a fine-tune through
+their activations and weights. Its methods include crosscoders, SAE and activation differences, KL divergence per
+token, PCA and an activation-difference lens, with dashboards and an evaluation of how well an agent can recover the
+fine-tune's purpose from each method. Its research shows that narrow fine-tunes leave readable traces in activation
+differences.
+
+behavior-diff is black-box. It needs no weights, works on hosted checkpoints and any server, and answers in
+behaviors and counts. diffing-toolkit can find what outputs do not show, such as a trained-in trait that never fires
+on your prompts. The two fit well together: run behavior-diff to find *what* changed, and diffing-toolkit to look for
+*where*.
+
+## Docent: reading transcripts at scale
+
+[Docent](https://github.com/TransluceAI/docent) is a platform for analyzing agent transcripts. You upload runs,
+search them, write rubrics ("did the agent give up early?") that a judge model scores, and cluster the results, in a
+UI or through its SDK. It works on one model's transcripts at a time. The rubric is written in advance; the
+clustering is exploratory, with no significance test or same-model control.
+
+Use Docent when you have many transcripts to read, especially multi-turn agent runs. Use behavior-diff when you have
+two versions of a model and want a tested list of what changed.
+
+**Possible extension, not built yet:** a `bdiff export-docent` command that writes one Docent run per prompt, holding
+three transcripts (base seed 1, base seed 2, fine-tune), with the conditions and each category's q-value as
+metadata. Then a changed category could be read in Docent's viewer, or written as a rubric and rescored.
+
+## Petri: auditing agents
+
+[Petri](https://github.com/meridianlabs-ai/inspect_petri) runs an auditor agent against one target model. Starting
+from seed instructions, it orchestrates multi-turn audits with simulated tools and rollbacks, and a judge scores each
+transcript on dimensions named in advance. It tests concrete hypotheses ("does it deceive under pressure?") in
+realistic, agentic settings, which single-reply prompts cannot reach.
+
+behavior-diff does not name behaviors in advance, compares two versions, and has a same-model control, but it only
+sees single replies. **Possible extension:** use a Petri seed set as a prompt suite (one opening turn per seed), or
+run one Petri audit per model version and read each version's replies in through `file:`.
+
+## Summary
+
+| You want to know | Use |
+|---|---|
+| What did my fine-tune change, relative to its own base? Is it more than noise? | behavior-diff |
+| What changed across generations of a self-improvement loop? | behavior-diff (`bdiff generations`) |
+| Which traits separate two different models, and which do users prefer? | VibeCheck |
+| Where in the activations or weights did fine-tuning act? | diffing-toolkit |
+| What is in thousands of agent transcripts? | Docent |
+| Does a model do a specific concerning thing in a multi-turn, tool-using scenario? | Petri |

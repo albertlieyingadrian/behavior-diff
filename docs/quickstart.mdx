@@ -1,0 +1,85 @@
+---
+title: "Quickstart"
+description: "Install, run the offline demo, then diff your own fine-tune."
+---
+
+## Install
+
+```bash
+pip install behavior-diff                 # standard library only
+pip install "behavior-diff[tinker]"       # + Tinker checkpoints and base models
+pip install "behavior-diff[modal]"        # + vLLM on a Modal GPU
+pip install "behavior-diff[hf]"           # + local transformers with PEFT adapters
+```
+
+Python 3.11 or later. This installs two commands: `bdiff`, and `behavior-diff` (an alias for `bdiff run`).
+
+## Run the demo: no key, no GPU, no network
+
+```bash
+bdiff demo
+open behavior-diff-demo/report.html       # xdg-open on Linux
+```
+
+```text
+128 prompts -> behavior-diff-demo/prompts.jsonl
+sampled: tuned 128, base 128, base2 128
+5 of 14 categories changed; judge $0.05 -> behavior-diff-demo/report.html
+  toward base: 2 vs 22  q=0.0005  Engages empathetically
+  toward base: 4 vs 24  q=0.0013  Provides incomplete output
+  toward base: 6 vs 24  q=0.0064  Offers detailed explanations
+  toward base: 1 vs 13  q=0.0064  Includes specific examples
+  toward tuned: 25 vs 10  q=0.047  Uses concise response style
+same-model control: 0 of 14 changed
+  P8: pre-registered weak hit; post hoc hit (as stated); category: Uses concise response style
+```
+
+The demo replays a live run: a Qwen3-8B LoRA trained on Tinker for 30 steps to answer in bullet points, sampled with
+its base on the 128 default prompts. The packaged data holds the three sets of replies and every judge reply. The
+judge URL points at a closed port and the spend cap is zero, so a missing cache entry fails rather than calling out.
+"$0.05" is what the judge calls cost when the run was made. The demo itself costs nothing.
+
+<Tip>
+  The same demo runs in a notebook:
+  [open it in Colab](https://colab.research.google.com/github/albertlieyingadrian/behavior-diff/blob/main/examples/quickstart.ipynb).
+</Tip>
+
+## Diff your own fine-tune
+
+The judge defaults to `qwen/qwen3-235b-a22b-2507` on OpenRouter (key in `OPENROUTER_API_KEY`). Any OpenAI-compatible
+endpoint works, including a vLLM server you run: `--judge-url http://localhost:8000/v1 --judge your-model
+--judge-key-env MY_KEY`.
+
+<CodeGroup>
+```bash Tinker
+export TINKER_API_KEY=... OPENROUTER_API_KEY=...
+bdiff run --tuned tinker://<run-id>/sampler_weights/final
+# the base defaults to the checkpoint's own base model on Tinker
+```
+
+```bash Modal (vLLM)
+modal setup
+export OPENROUTER_API_KEY=...
+bdiff run --base modal:Qwen/Qwen2.5-7B-Instruct \
+          --tuned modal:Qwen/Qwen2.5-7B-Instruct+<owner>/<lora-repo>
+```
+
+```bash Replies you already have
+bdiff run --base file:base.jsonl --base-control file:base_seed2.jsonl --tuned file:tuned.jsonl
+# rows {"id": <prompt id>, "reply": "..."}; get the prompt ids with:
+bdiff run --tuned file:x --dump-prompts -o prompts/
+```
+</CodeGroup>
+
+The default run is 128 prompts and 384 replies (base twice, fine-tune once), with 256 describe calls plus a few to
+name and assign categories. The judge spend cap is `--max-usd 3`. Every judge call is cached in
+`OUT/judge_cache.jsonl`, so a rerun on the same replies is free.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Reading the report" icon="file-lines" href="/reading-the-report">What each table means, and what to check first.</Card>
+  <Card title="Pre-registered scoring" icon="lock" href="/preregistration">Write down your expectation before you run.</Card>
+  <Card title="Drift across generations" icon="chart-line" href="/generations">For self-improvement loops and RL runs.</Card>
+  <Card title="Backends" icon="server" href="/backends">Tinker, vLLM on Modal, OpenAI-compatible, transformers, files.</Card>
+</CardGroup>
