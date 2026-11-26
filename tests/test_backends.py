@@ -131,3 +131,30 @@ def test_strip_thinking() -> None:
 def test_token_ids_accepts_lists_and_batch_encodings() -> None:
     assert backends.token_ids([1, 2, 3]) == [1, 2, 3]
     assert backends.token_ids({"input_ids": [4, 5], "attention_mask": [1, 1]}) == [4, 5]
+
+
+def test_modal_spec_needs_no_modal_import_until_sampling() -> None:
+    s = backends.make_sampler("modal:Qwen/Qwen2.5-7B-Instruct+owner/adapters/locked", temperature=0.5, seed=2)
+    assert isinstance(s, backends.ModalSampler)
+    assert s.repo == "Qwen/Qwen2.5-7B-Instruct" and s.adapter == {"repo": "owner/adapters", "subfolder": "locked"}
+
+
+def test_modal_sampler_job_and_reply_order() -> None:
+    jobs: list[dict[str, Any]] = []
+
+    def remote(job: dict[str, Any]) -> list[str]:
+        jobs.append(job)
+        return [f"reply to {m[-1]['content']}" for m in job["messages"]]
+
+    s = backends.ModalSampler("Qwen/Qwen2.5-0.5B-Instruct", 0.7, 50, seed=1, remote=remote)
+    ps = [{"id": f"p{k}", "messages": [{"role": "user", "content": f"q{k}"}]} for k in range(3)]
+    assert s.sample_all(ps) == {"p0": "reply to q0", "p1": "reply to q1", "p2": "reply to q2"}
+    assert jobs[0]["seeds"] == [100_000, 100_001, 100_002] and jobs[0]["adapter"] is None
+    assert jobs[0]["max_tokens"] == 50 and jobs[0]["temperature"] == 0.7
+
+
+def test_split_model() -> None:
+    assert backends.split_model("a/b") == ("a/b", None)
+    assert backends.split_model("a/b+c/d") == ("a/b", {"repo": "c/d", "subfolder": ""})
+    with pytest.raises(ValueError):
+        backends.split_model("a/b+justone")
