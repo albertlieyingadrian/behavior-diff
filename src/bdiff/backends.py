@@ -6,8 +6,10 @@
                                             gets enable_thinking=False, and any <think> block is removed)
     openai:<model>@<base url>               any OpenAI-compatible server (vLLM, Ollama, OpenRouter); key from
                                             BDIFF_API_KEY or OPENAI_API_KEY
+    modal:<repo>[+<adapter repo>[/<subfolder>]]  vLLM on a Modal GPU, with an optional LoRA adapter (`pip install
+                                            behavior-diff[modal]`, `modal setup`; GPU from BDIFF_MODAL_GPU)
     hf:<repo>[+<adapter repo>[/<subfolder>]]  local transformers, with an optional PEFT adapter (`pip install
-                                            steerlab-bdiff[hf]`; fine for small models, slow for large ones)
+                                            behavior-diff[hf]`; fine for small models, slow for large ones)
     file:<replies.jsonl>                    replies sampled elsewhere, rows {"id": <prompt id>, "reply": "..."}
 
 Every backend has `sample_all(prompts) -> {prompt id: reply}` with the same decoding: temperature, top_p 1, no
@@ -21,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -114,6 +117,52 @@ class TinkerSampler:
         return out
 
 
+def split_model(spec: str) -> tuple[str, dict[str, str] | None]:
+    """`repo[+adapter_owner/adapter_name[/subfolder]]` -> (repo, {"repo", "subfolder"} or None)."""
+    repo, _, adapter = spec.partition("+")
+    if not adapter:
+        return repo, None
+    parts = adapter.split("/")
+    if len(parts) < 2:
+        raise ValueError(f"adapter {adapter!r}: expected <owner>/<name>[/<subfolder>]")
+    return repo, {"repo": "/".join(parts[:2]), "subfolder": "/".join(parts[2:])}
+
+
+class ModalSampler:
+    """vLLM on a Modal GPU (see bdiff.modal_app). `remote` is injectable for tests; by default it starts the app."""
+
+    def __init__(
+        self,
+        spec: str,
+        temperature: float,
+        max_tokens: int,
+        seed: int,
+        remote: Callable[[dict[str, Any]], list[str]] | None = None,
+    ) -> None:
+        self.repo, self.adapter = split_model(spec)
+        self.temperature, self.max_tokens, self.seed = temperature, max_tokens, seed
+        self.remote = remote
+
+    def job(self, prompts: list[Prompt]) -> dict[str, Any]:
+        return {
+            "repo": self.repo,
+            "adapter": self.adapter,
+            "messages": [p["messages"] for p in prompts],
+            "seeds": [prompt_seed(self.seed, k) for k in range(len(prompts))],
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+
+    def sample_all(self, prompts: list[Prompt]) -> dict[str, str]:
+        remote = self.remote
+        if remote is None:
+            from bdiff import modal_app  # optional dependency: imports modal
+
+            remote = modal_app.run
+        outs = remote(self.job(prompts))
+        return {p["id"]: o for p, o in zip(prompts, outs, strict=True)}
+
+
 class HFSampler:
     """Local transformers generation, batched, left-padded, greedy-free sampling with a fixed seed."""
 
@@ -121,7 +170,7 @@ class HFSampler:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
-        repo, _, adapter = spec.partition("+")
+        repo, adapter = split_model(spec)
         self.torch, self.temperature, self.max_tokens, self.seed, self.batch = (
             torch,
             temperature,
@@ -137,9 +186,8 @@ class HFSampler:
             from huggingface_hub import snapshot_download
             from peft import PeftModel
 
-            parts = adapter.split("/")
-            sub = "/".join(parts[2:])
-            path = Path(snapshot_download("/".join(parts[:2]), allow_patterns=[f"{sub}/*"] if sub else None)) / sub
+            sub = adapter["subfolder"]
+            path = Path(snapshot_download(adapter["repo"], allow_patterns=[f"{sub}/*"] if sub else None)) / sub
             model = PeftModel.from_pretrained(model, str(path)).merge_and_unload()
         self.model, self.dev = model.eval(), dev
 
@@ -176,6 +224,8 @@ def make_sampler(spec: str, temperature: float = 0.7, max_tokens: int = 300, see
         return OpenAISampler(model, url, temperature, max_tokens, seed)
     if spec.startswith("file:"):
         return FileSampler(spec.split(":", 1)[1])
+    if spec.startswith("modal:"):
+        return ModalSampler(spec.split(":", 1)[1], temperature, max_tokens, seed)
     if spec.startswith("hf:"):
         return HFSampler(spec.split(":", 1)[1], temperature, max_tokens, seed)
-    raise ValueError(f"unknown model spec {spec!r}: use tinker://, tinker-base:, openai:, hf: or file:")
+    raise ValueError(f"unknown model spec {spec!r}: use tinker://, tinker-base:, modal:, openai:, hf: or file:")

@@ -79,3 +79,31 @@ def _factor_table(factors: dict[str, Any]) -> str:
             )
     out.append("</table>")
     return "\n".join(out)
+
+
+def expectations_html(scored: list[dict[str, Any]], lock: dict[str, Any] | None, warning: str | None) -> str:
+    """The pre-registered and post hoc scores side by side."""
+    e = html.escape
+    out = ["<h2>Expectations: pre-registered vs post hoc</h2>"]
+    if lock:
+        out.append(
+            f"<p class=muted>Locked before the run: {e(lock['file'])}, sha256 {e(lock['sha256'][:12])}…, "
+            f"{e(lock['locked_at'])}. The post hoc column uses readings chosen after seeing results; treat it as "
+            "exploratory.</p>"
+        )
+    if warning:
+        out.append(f"<p><b>Warning:</b> {e(warning)}</p>")
+    out.append("<table><tr><th>Expectation</th><th>Pre-registered</th><th>Post hoc</th><th>Category</th></tr>")
+    for s in scored:
+        pre, post = s["preregistered"], s["posthoc"]
+        p = "hit" if pre["hit"] and pre["strength"] == "name" else "weak hit (definition)" if pre["hit"] else "miss"
+        q = f"hit ({post['reading']})" if post["hit"] else "miss"
+        cat = pre["category"] or post["category"]
+        cell = (
+            f"{e(cat['name'])} <span class=muted>{cat['n_new']} vs {cat['n_ref']}, q={cat['q']:.2g}</span>"
+            if cat
+            else "-"
+        )
+        out.append(f"<tr><td><b>{e(s['id'])}</b> {e(s['claim'])}</td><td>{p}</td><td>{q}</td><td>{cell}</td></tr>")
+    out.append("</table>")
+    return "\n".join(out)

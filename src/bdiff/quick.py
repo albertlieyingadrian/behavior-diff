@@ -1,8 +1,11 @@
-"""`behavior-diff`: one command from a base model and a fine-tune to an HTML report.
+"""`bdiff run` (also installed as `behavior-diff`): one command from a base model and a fine-tune to an HTML report.
 
-    behavior-diff --base tinker-base:Qwen/Qwen3-8B --tuned tinker://<run>/sampler_weights/final --conditions default
-    behavior-diff --tuned tinker://...            (the base defaults to the checkpoint's own base model on Tinker)
-    behavior-diff --base hf:Qwen/Qwen2.5-1.5B-Instruct --tuned hf:Qwen/Qwen2.5-1.5B-Instruct+user/adapter
+    bdiff run --base tinker-base:Qwen/Qwen3-8B --tuned tinker://<run>/sampler_weights/final
+    bdiff run --tuned tinker://...                (the base defaults to the checkpoint's own base model on Tinker)
+    bdiff run --base modal:Qwen/Qwen2.5-7B-Instruct --tuned modal:Qwen/Qwen2.5-7B-Instruct+user/adapter
+    bdiff run --base hf:Qwen/Qwen2.5-1.5B-Instruct --tuned hf:Qwen/Qwen2.5-1.5B-Instruct+user/adapter
+    bdiff run --base file:base.jsonl --base-control file:base_seed2.jsonl --tuned file:tuned.jsonl
+    bdiff run ... --expect expect.json            (pre-registered expectations, locked before sampling)
 
 It samples the base twice (seeds 1 and 2) and the fine-tune once (seed 2) on the default suite (64 usability items:
 instruction following, over-refusal, harmful requests, sycophancy, verbosity, uncertainty, tool-use caution,
@@ -21,11 +24,11 @@ from pathlib import Path
 from typing import Any
 
 from bdiff import judge as judge_lib
-from bdiff import stats
+from bdiff import prereg, stats
 from bdiff.backends import TinkerSampler, make_sampler
 from bdiff.llm import Chat, Client
 from bdiff.prompts import expand
-from bdiff.report import to_html
+from bdiff.report import expectations_html, to_html
 
 DEFAULT_JUDGE = "qwen/qwen3-235b-a22b-2507"
 
@@ -112,6 +115,9 @@ def page(rep: dict[str, Any]) -> str:
         extra.append("</table>")
     else:
         extra.append("<p>Not run (--no-control).</p>")
+    if "expectations" in rep:
+        x = rep["expectations"]
+        extra.append(expectations_html(x["scores"], x.get("lock"), x.get("warning")))
     extra.append("<h2>Example pairs</h2>")
     for name, pairs in rep["examples"].items():
         extra.append(f"<h3>{e(name)}</h3>")
@@ -124,11 +130,19 @@ def page(rep: dict[str, Any]) -> str:
     return to_html(rep["main"]) + "\n" + "\n".join(extra)
 
 
-def parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="behavior-diff", description=__doc__,
-                                 formatter_class=argparse.RawTextHelpFormatter)  # fmt: skip
-    ap.add_argument("--tuned", required=True, help="the fine-tune (tinker://, tinker-base:, openai:, hf:, file:)")
-    ap.add_argument("--base", help="the base model; default for a tinker:// checkpoint: its base model on Tinker")
+def parser(prog: str = "bdiff run") -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(prog=prog, description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    add_model_args(ap)
+    return ap
+
+
+def add_model_args(ap: argparse.ArgumentParser, single: bool = True) -> None:
+    """The options shared by `bdiff run` and `bdiff generations`."""
+    if single:
+        ap.add_argument(
+            "--tuned", required=True, help="the fine-tune: tinker://, tinker-base:, modal:, openai:, hf:, file:"
+        )
+        ap.add_argument("--base", help="the base model; default for a tinker:// checkpoint: its base model on Tinker")
     ap.add_argument("--base-control", help="a second base sample (needed only when --base is file:)")
     ap.add_argument("--suite", default="default", help="'default' or a suite JSON file")
     ap.add_argument("--conditions", default="default", help="'default', 'none' or a factors JSON file")
@@ -144,20 +158,31 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-control", action="store_true", help="skip the same-model control")
     ap.add_argument("--dump-prompts", action="store_true", help="write OUT/prompts.jsonl and stop")
-    ap.add_argument("-o", "--out", default="behavior-diff-report")
-    return ap
+    ap.add_argument("--expect", help="an expectations JSON file: locked before sampling, scored two ways")
+    ap.add_argument("-o", "--out", default="behavior-diff-report" if single else "behavior-diff-generations")
 
 
-def main(argv: list[str] | None = None, chat: Chat | None = None) -> None:
-    ap = parser()
-    a = ap.parse_args(argv)
-    out = Path(a.out)
+def build_prompts(a: argparse.Namespace, out: Path) -> list[dict[str, Any]]:
+    """The suite's items under the chosen conditions, written to OUT/prompts.jsonl."""
     (out / "replies").mkdir(parents=True, exist_ok=True)
     suite = load_suite(a.suite)
     spec = {"items": suite["items"], "factors": conditions(a.conditions, suite), "draws": a.draws, "seed": a.seed}
     prompts = expand(spec)
     (out / "prompts.jsonl").write_text(judge_lib.dumps_jsonl(prompts))
     print(f"{len(prompts)} prompts -> {out / 'prompts.jsonl'}")
+    return prompts
+
+
+def make_judge(a: argparse.Namespace, out: Path, chat: Chat | None) -> Chat:
+    return chat or Client(a.judge, a.judge_url, a.judge_key_env, cache=out / "judge_cache.jsonl", max_usd=a.max_usd)
+
+
+def main(argv: list[str] | None = None, chat: Chat | None = None, prog: str = "bdiff run") -> None:
+    ap = parser(prog)
+    a = ap.parse_args(argv)
+    out = Path(a.out)
+    lock = prereg.lock(a.expect, out) if a.expect else None
+    prompts = build_prompts(a, out)
     if a.dump_prompts:
         return
 
@@ -179,7 +204,7 @@ def main(argv: list[str] | None = None, chat: Chat | None = None) -> None:
         (out / "replies" / f"{name}.jsonl").write_text(judge_lib.dumps_jsonl(lines))
     print("sampled: " + ", ".join(f"{k} {len(v)}" for k, v in replies.items()))
 
-    judge = chat or Client(a.judge, a.judge_url, a.judge_key_env, cache=out / "judge_cache.jsonl", max_usd=a.max_usd)
+    judge = make_judge(a, out, chat)
     res = analyse(judge, prompts, replies["base"], replies["tuned"], None, a)
     meta = {
         "ref": label(base),
@@ -202,6 +227,9 @@ def main(argv: list[str] | None = None, chat: Chat | None = None) -> None:
         ctrl = analyse(judge, prompts, replies["base"], replies["base2"], res["categories"], a)
         rep["control"] = {"categories": ctrl["rows"], "shuffle": ctrl["shuffle"]}
     rep["judge_usd"] = round(float(getattr(judge, "usd", 0.0)), 4)
+    if a.expect:
+        scores = prereg.score(res["rows"], prereg.load(a.expect), a.alpha)
+        rep["expectations"] = {"lock": lock, "scores": scores}
     (out / "report.json").write_text(json.dumps(rep, indent=1, ensure_ascii=False))
     (out / "report.html").write_text(page(rep))
     changed = [r for r in res["rows"] if r["changed"]]
@@ -209,9 +237,13 @@ def main(argv: list[str] | None = None, chat: Chat | None = None) -> None:
         f"{len(changed)} of {len(res['rows'])} categories changed; judge ${rep['judge_usd']:.2f} -> {out}/report.html"
     )
     for r in changed:
-        print(f"  toward {'tuned' if r['toward'] == 'new' else 'base'}: {r['n_new']} vs {r['n_ref']}  {r['name']}")
+        side = "tuned" if r["toward"] == "new" else "base"
+        print(f"  toward {side}: {r['n_new']} vs {r['n_ref']}  q={r['q']:.2g}  {r['name']}")
     if "control" in rep:
-        print(f"same-model control: {sum(r['changed'] for r in rep['control']['categories'])} categories changed")
+        n_ctrl = len(rep["control"]["categories"])
+        print(f"same-model control: {sum(r['changed'] for r in rep['control']['categories'])} of {n_ctrl} changed")
+    for s in rep.get("expectations", {}).get("scores", []):
+        print("  " + prereg.summary_line(s))
 
 
 if __name__ == "__main__":

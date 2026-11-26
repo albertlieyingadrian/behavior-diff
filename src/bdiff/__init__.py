@@ -1,3 +1,8 @@
-"""bdiff: surface, name and track behavior changes between two model versions under controlled input conditions."""
+"""bdiff: surface, name and track behavior changes between model versions under controlled input conditions."""
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("behavior-diff")
+except PackageNotFoundError:  # running from a source tree without an install
+    __version__ = "0.0.0"
