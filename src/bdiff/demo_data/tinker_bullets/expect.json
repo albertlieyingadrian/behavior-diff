@@ -1,0 +1,11 @@
+{
+ "about": "Prediction P8 of the research note (amendment A2), written before the Tinker run.",
+ "expectations": [
+  {
+   "id": "P8",
+   "claim": "A changed category about bullet or list formatting, toward the bullet-point LoRA",
+   "match": "bullet|list",
+   "direction": "tuned"
+  }
+ ]
+}
