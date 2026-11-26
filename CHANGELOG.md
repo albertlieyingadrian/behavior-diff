@@ -2,7 +2,8 @@
 
 ## 0.1.0 (2026-11-26)
 
-First release as its own package, `behavior-diff` on PyPI (import name `bdiff`). Split out of
+First release as its own package: `bdiff` on PyPI (import name `bdiff`; PyPI treats `behavior-diff` as too
+close to an existing project, `behaviordiff`). Split out of
 [steerlab](https://github.com/albertlieyingadrian/steerlab)'s `packages/behavior-diff`, with its history.
 
 - `bdiff run --base MODEL --tuned MODEL`: sample, judge, categorize, test, with a same-model control and an HTML

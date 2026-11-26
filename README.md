@@ -1,6 +1,6 @@
 # behavior-diff
 
-[![PyPI](https://img.shields.io/pypi/v/behavior-diff)](https://pypi.org/project/behavior-diff/) [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://pypi.org/project/behavior-diff/) [![CI](https://github.com/albertlieyingadrian/behavior-diff/actions/workflows/ci.yml/badge.svg)](https://github.com/albertlieyingadrian/behavior-diff/actions/workflows/ci.yml) [![Docs](https://img.shields.io/badge/docs-behavior--diff.mintlify.site-1f7a6d)](https://behavior-diff.mintlify.site) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/albertlieyingadrian/behavior-diff/blob/main/examples/quickstart.ipynb) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/bdiff)](https://pypi.org/project/bdiff/) [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://pypi.org/project/bdiff/) [![CI](https://github.com/albertlieyingadrian/behavior-diff/actions/workflows/ci.yml/badge.svg)](https://github.com/albertlieyingadrian/behavior-diff/actions/workflows/ci.yml) [![Docs](https://img.shields.io/badge/docs-behavior--diff.mintlify.site-1f7a6d)](https://behavior-diff.mintlify.site) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/albertlieyingadrian/behavior-diff/blob/main/examples/quickstart.ipynb) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <p align="center"><img src="docs/images/demo.gif" alt="bdiff demo: 5 of 14 behavior categories changed, led by 'Uses concise response style' on 25 prompts against 10 (q=0.047); the same-model control changed 0 of 14" width="760"></p>
 
@@ -32,8 +32,10 @@ control, and example prompt / base / fine-tune triples.
 
 ## Quick start
 
+The package is `bdiff` on PyPI. (PyPI treats `behavior-diff` as too close to an unrelated project, `behaviordiff`.)
+
 ```bash
-pip install behavior-diff
+pip install bdiff
 bdiff demo          # no key, no GPU, no network: replays a real run from saved data
 open behavior-diff-demo/report.html
 ```
@@ -42,11 +44,11 @@ On your own models (the judge defaults to an open-weight model on OpenRouter; `-
 OpenAI-compatible endpoint, including your own vLLM server):
 
 ```bash
-pip install "behavior-diff[tinker]"
+pip install "bdiff[tinker]"
 export TINKER_API_KEY=... OPENROUTER_API_KEY=...
 bdiff run --tuned tinker://<run-id>/sampler_weights/final          # the base is read from the checkpoint
 
-pip install "behavior-diff[modal]" && modal setup                   # vLLM on a Modal GPU
+pip install "bdiff[modal]" && modal setup                   # vLLM on a Modal GPU
 bdiff run --base modal:Qwen/Qwen2.5-7B-Instruct --tuned modal:Qwen/Qwen2.5-7B-Instruct+<owner>/<lora-repo>
 
 bdiff run --base file:base.jsonl --base-control file:base_seed2.jsonl --tuned file:tuned.jsonl   # sampled elsewhere
@@ -54,11 +56,11 @@ bdiff run --base file:base.jsonl --base-control file:base_seed2.jsonl --tuned fi
 
 | Model spec | Samples from | Needs |
 |---|---|---|
-| `tinker://<checkpoint>` | a Tinker checkpoint | `behavior-diff[tinker]`, `TINKER_API_KEY` |
+| `tinker://<checkpoint>` | a Tinker checkpoint | `bdiff[tinker]`, `TINKER_API_KEY` |
 | `tinker-base:<model>` | a Tinker base model | same |
-| `modal:<repo>[+<adapter repo>[/<subfolder>]]` | vLLM on a Modal GPU, optional LoRA | `behavior-diff[modal]`, `modal setup` |
+| `modal:<repo>[+<adapter repo>[/<subfolder>]]` | vLLM on a Modal GPU, optional LoRA | `bdiff[modal]`, `modal setup` |
 | `openai:<model>@<url>` | any OpenAI-compatible server (vLLM, Ollama, ...) | `BDIFF_API_KEY` or `OPENAI_API_KEY` |
-| `hf:<repo>[+<adapter repo>[/<subfolder>]]` | local transformers, optional PEFT adapter | `behavior-diff[hf]`; small models |
+| `hf:<repo>[+<adapter repo>[/<subfolder>]]` | local transformers, optional PEFT adapter | `bdiff[hf]`; small models |
 | `file:<replies.jsonl>` | replies you sampled elsewhere | rows `{"id", "reply"}` |
 
 ## The demo: a bullet-point LoRA, found from saved data

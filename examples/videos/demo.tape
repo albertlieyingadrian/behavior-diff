@@ -13,7 +13,7 @@ Type `export PATH=$PWD/.venv/bin:$PATH PS1='%F{43}behavior-diff%f $ ' && setopt 
 Enter
 Sleep 1s
 Show
-Type "# pip install behavior-diff"
+Type "# pip install bdiff"
 Enter
 Sleep 600ms
 Type "bdiff demo    # a bullet-point LoRA on Qwen3-8B, from saved data: no key needed"

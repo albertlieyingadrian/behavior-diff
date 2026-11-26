@@ -4,7 +4,7 @@ requires = ["uv_build>=0.11.7,<0.14"]
 build-backend = "uv_build"
 
 [project]
-name = "behavior-diff"
+name = "bdiff"
 # The ONLY place the version lives. Code reads it with importlib.metadata.
 version = "0.1.0"
 description = "What did my fine-tune change? Sample two model versions on the same prompts, have a judge describe the differences, name them as categories, and test each one against a same-model control."

@@ -9,11 +9,11 @@ takes one.
 
 | Spec | Samples from | Install and auth |
 |---|---|---|
-| `tinker://<run>/sampler_weights/<name>` | a Tinker checkpoint | `behavior-diff[tinker]`, `TINKER_API_KEY` |
+| `tinker://<run>/sampler_weights/<name>` | a Tinker checkpoint | `bdiff[tinker]`, `TINKER_API_KEY` |
 | `tinker-base:<model>` | a Tinker base model, e.g. `tinker-base:Qwen/Qwen3-8B` | same |
-| `modal:<repo>[+<adapter repo>[/<subfolder>]]` | vLLM on a Modal GPU, optional LoRA | `behavior-diff[modal]`, `modal setup` |
+| `modal:<repo>[+<adapter repo>[/<subfolder>]]` | vLLM on a Modal GPU, optional LoRA | `bdiff[modal]`, `modal setup` |
 | `openai:<model>@<base url>` | any OpenAI-compatible server: vLLM, SGLang, Ollama, a hosted API | `BDIFF_API_KEY` or `OPENAI_API_KEY` |
-| `hf:<repo>[+<adapter repo>[/<subfolder>]]` | local transformers, optional PEFT adapter | `behavior-diff[hf]`; fine for small models |
+| `hf:<repo>[+<adapter repo>[/<subfolder>]]` | local transformers, optional PEFT adapter | `bdiff[hf]`; fine for small models |
 | `file:<replies.jsonl>` | replies sampled elsewhere | rows `{"id": <prompt id>, "reply": "..."}` |
 
 ## Tinker
@@ -31,7 +31,7 @@ time, including training.
 ## vLLM on Modal
 
 ```bash
-pip install "behavior-diff[modal]"
+pip install "bdiff[modal]"
 modal setup                                   # once: links the Modal CLI to your account
 bdiff run --base modal:Qwen/Qwen2.5-7B-Instruct \
           --tuned modal:Qwen/Qwen2.5-7B-Instruct+ModelOrganismsForEM/Qwen2.5-7B-Instruct_bad-medical-advice

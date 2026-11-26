@@ -7,9 +7,9 @@
     openai:<model>@<base url>               any OpenAI-compatible server (vLLM, Ollama, OpenRouter); key from
                                             BDIFF_API_KEY or OPENAI_API_KEY
     modal:<repo>[+<adapter repo>[/<subfolder>]]  vLLM on a Modal GPU, with an optional LoRA adapter (`pip install
-                                            behavior-diff[modal]`, `modal setup`; GPU from BDIFF_MODAL_GPU)
+                                            bdiff[modal]`, `modal setup`; GPU from BDIFF_MODAL_GPU)
     hf:<repo>[+<adapter repo>[/<subfolder>]]  local transformers, with an optional PEFT adapter (`pip install
-                                            behavior-diff[hf]`; fine for small models, slow for large ones)
+                                            bdiff[hf]`; fine for small models, slow for large ones)
     file:<replies.jsonl>                    replies sampled elsewhere, rows {"id": <prompt id>, "reply": "..."}
 
 Every backend has `sample_all(prompts) -> {prompt id: reply}` with the same decoding: temperature, top_p 1, no

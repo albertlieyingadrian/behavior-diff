@@ -1,6 +1,6 @@
 """The Modal app behind the `modal:` backend: vLLM on one GPU, a base model with an optional LoRA adapter.
 
-Imported only when a `modal:` spec is sampled (needs `pip install behavior-diff[modal]` and a Modal account:
+Imported only when a `modal:` spec is sampled (needs `pip install bdiff[modal]` and a Modal account:
 `modal setup`). Each `sample_all` starts an ephemeral app, loads the model once, generates every prompt with its own
 seed and stops; nothing stays deployed. Settings, read when the module is imported:
 

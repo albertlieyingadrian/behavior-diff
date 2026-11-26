@@ -6,10 +6,10 @@ description: "Install, run the offline demo, then diff your own fine-tune."
 ## Install
 
 ```bash
-pip install behavior-diff                 # standard library only
-pip install "behavior-diff[tinker]"       # + Tinker checkpoints and base models
-pip install "behavior-diff[modal]"        # + vLLM on a Modal GPU
-pip install "behavior-diff[hf]"           # + local transformers with PEFT adapters
+pip install bdiff                 # standard library only
+pip install "bdiff[tinker]"       # + Tinker checkpoints and base models
+pip install "bdiff[modal]"        # + vLLM on a Modal GPU
+pip install "bdiff[hf]"           # + local transformers with PEFT adapters
 ```
 
 Python 3.11 or later. This installs two commands: `bdiff`, and `behavior-diff` (an alias for `bdiff run`).
